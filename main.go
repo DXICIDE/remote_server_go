@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -78,32 +79,35 @@ func handlerReq(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	type resErr struct {
-		Error string `json:"error"`
-	}
-	type valid struct {
-		Valid bool `json:"valid"`
+	type cleaned_body struct {
+		Cleaned_body string `json:"cleaned_body"`
 	}
 
 	if len(params.Body) > 140 {
-		respBody := resErr{
-			Error: "Chirp is too long",
-		}
-
-		dat, err := json.Marshal(respBody)
-		if err != nil {
-			log.Printf("Error marshalling JSON: %s", err)
-			w.WriteHeader(500)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		w.Write(dat)
+		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
 
-	respBody := valid{
-		Valid: true,
+	bodysplit := strings.Split(params.Body, " ")
+
+	for i := 0; i < len(bodysplit); i++ {
+		body := strings.ToLower(bodysplit[i])
+		if body == "kerfuffle" || body == "sharbert" || body == "fornax" {
+			bodysplit[i] = "****"
+		}
+	}
+	body := strings.Join(bodysplit, " ")
+	cleanBody := &cleaned_body{}
+	cleanBody.Cleaned_body = body
+	respondWithJSON(w, 200, cleanBody)
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	type resErr struct {
+		Error string `json:"error"`
+	}
+	respBody := resErr{
+		Error: msg,
 	}
 
 	dat, err := json.Marshal(respBody)
@@ -113,6 +117,18 @@ func handlerReq(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
+	w.WriteHeader(code)
+	w.Write(dat)
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	dat, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
 	w.Write(dat)
 }
