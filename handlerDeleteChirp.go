@@ -12,7 +12,6 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 	PathValue := r.PathValue("chirpID")
 	id, err := uuid.Parse(PathValue)
 	if err != nil {
-		log.Printf("Error getting ID : %s", err)
 		respondWithError(w, http.StatusBadRequest, "invalid chirp id")
 		return
 	}
