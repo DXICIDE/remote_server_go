@@ -7,22 +7,23 @@ import (
 	"time"
 
 	"github.com/DXICIDE/remote_server_go/internal/auth"
+	"github.com/DXICIDE/remote_server_go/internal/database"
 	"github.com/google/uuid"
 )
 
 type UserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type body struct {
-		Password         string `json:"password"`
-		Email            string `json:"email"`
-		ExpiresInSeconds int    `json:"expires_in_seconds"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -49,13 +50,17 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 		return
 	}
-	if params.ExpiresInSeconds == 0 || params.ExpiresInSeconds > 3600 {
-		params.ExpiresInSeconds = 3600
-	}
 
-	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Duration(time.Duration(params.ExpiresInSeconds)*time.Second))
+	token, err := cfg.TokenForLogin(user.ID)
 	if err != nil {
 		log.Printf("Couldnt make the token: %s", err)
+		w.WriteHeader(401)
+		return
+	}
+
+	refreshToken, err := cfg.TokenForRefresh(user.ID, r)
+	if err != nil {
+		log.Printf("Couldnt make the refresh token: %s", err)
 		w.WriteHeader(401)
 		return
 	}
@@ -66,5 +71,30 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	userMap.CreatedAt = user.CreatedAt
 	userMap.UpdatedAt = user.UpdatedAt
 	userMap.Token = token
+	userMap.RefreshToken = refreshToken
 	respondWithJSON(w, 200, userMap)
+}
+
+func (cfg *apiConfig) TokenForRefresh(id uuid.UUID, r *http.Request) (string, error) {
+	refreshTokenID, err := auth.MakeRefreshToken()
+	if err != nil {
+		return "", err
+	}
+
+	createToken := database.CreateTokensParams{
+		UserID: id,
+		Token:  refreshTokenID,
+	}
+
+	refreshToken, err := cfg.db.CreateTokens(r.Context(), createToken)
+	return refreshToken.Token, err
+}
+
+func (cfg *apiConfig) TokenForLogin(id uuid.UUID) (string, error) {
+	seconds := 3600
+	token, err := auth.MakeJWT(id, cfg.secret, time.Duration(time.Duration(seconds)*time.Second))
+	if err != nil {
+		return "", err
+	}
+	return token, err
 }
