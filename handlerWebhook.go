@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/DXICIDE/remote_server_go/internal/auth"
 	"github.com/google/uuid"
 )
 
@@ -18,9 +19,21 @@ func (cfg *apiConfig) handlerWebhook(w http.ResponseWriter, r *http.Request) {
 		Data  data   `json:"data"`
 	}
 
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		log.Printf("Error getting Token: %s", err)
+		w.WriteHeader(401)
+		return
+	}
+
+	if apiKey != cfg.polka_key {
+		respondWithError(w, 401, "Wrong Api key")
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		log.Printf("Error decoding parameters: %s", err)
 		w.WriteHeader(500)
